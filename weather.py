@@ -3,13 +3,13 @@ class Weather:
     Represents weather conditions affecting a cell's flammability.
     """
     def __init__(self, temperature, humidity, wind_speed):
-        self.temperature = temperature 
-        self.humidity = humidity  
-        self.wind_speed = wind_speed  
+        self.temperature = temperature  # Temperature (°C)
+        self.humidity = humidity  # Humidity (%)
+        self.wind_speed = wind_speed  # Wind speed (km/h)
 
     def modify_flammability(self, cell):
         """
-        Burasının citation ile olması gerekyor.
+        Adjust flammability based on weather parameters.
         """
         temperature_effect = max(0, (self.temperature - 20) * 0.01)
         humidity_effect = max(0, (50 - self.humidity) * 0.005)
