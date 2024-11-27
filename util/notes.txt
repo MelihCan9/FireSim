@@ -1,0 +1,41 @@
+Flammability hesabı için rothermelden referans alınıyor ancak kullanmış olduğu parameterelerin (ignition energy etc.) değerini spesifik olarak makelede belirtmediği için  atanan constant değerler (land type spesifik) ileride resmi kurumlardan (OGM?) alınabilir.
+Rothermel ile hesaplanan land type şimdilik forest, diğerlerine de eklenecek ancak dediğim gibi ignition energy, fuel density gibi değerlerin land type'a spesifik olarak bazı constantlara sahip olması gerekiyor. 
+Weather Flammability'i etkiliyor (modify_flammability) ancak flammable olmayan yerler (water, highway) sabit sıfır.
+
+Yayılım modeli ya rothermelden ya da cellular based automata olacak. 
+
+Hala skin eklenmedi simülasyon version 1 çıktıktan sonra 3D veya responsive bir grid gibi seçenekler eklenilebilir.
+
+
+Land Types: 
+forest (green)
+water (blue)
+highway (black)
+urban (yellow)
+agricultural (tan)
+grassland (lightgreen)
+recreational ()
+industrial (dark grey)
+
+
+simülasyon:
+Başladıktan sonra belli cell'ler ignite oluyor ardından burning state'e geçiyor, burning state'de iken komşu 8 cell için flammability ve flammable kontrolu yapılıyor (yayılım modeli buraya eklenecek) ardından gerekli şartlar sağlanıyorsa komşu cell de ignite
+alıyor ve aynı süreç tekrarlanıyor.
+
+Turuncu ignite
+Kırmızı yanıyor
+Gri kül oldu.
+
+
+Kod yapısı:
+Kod girilmiş olan lat lon ve resolution değerlerine göre adaptive bir grid oluşturuyor.
+generate_grid() methodu ile grid oluşturulurken eklenen her cell default olarak unknown tipinde ve constant bir weather'da oluşturuluyor.
+cell clasında her cell'de olması gereken özellikler (land type, weather, flammability etc.) haricinde state methodları tanımlı. 
+
+Buraya kadar default özelliklere sahip cell'ler ile adaptive grid oluşturuldu 
+
+Devamında main tarafında belirli cell'lere atamalar (land_type, ignition) yapıldı.
+
+ignite ile yangın başladı, görselleştirme için ise visualize_dynamic() kullanıldı. 
+
+

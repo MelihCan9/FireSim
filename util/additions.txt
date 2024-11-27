@@ -1,0 +1,21 @@
+
+Here is the English translation of your text:
+
+There should be pause and resume buttons,
+
+It should be possible to move forward and backward with a slider.
+
+There should be two modes: Map Generation and Map Simulation.
+
+In the Map Generation mode, an adaptive grid will be created, and I should be able to assign any properties I want to specific cells via a palette. I should be able to assign land types, etc., to any cell. Essentially, it will resemble a game screen where I can create my own map. In addition to editing cells individually, I should also be able to select and edit areas.
+In the Simulation mode, I will start the simulation on the grid map I created/edited. However, I should still have control during the simulation, meaning I should be able to pause and resume the simulation whenever I want. Additionally, I should be able to advance the simulation step by step. Lastly, the simulation should not be pre-calculated; it should progress dynamically with each step.
+There should also be an unknown state, meaning any cells I did not select or edit during the Map Generation phase should remain in the unknown state.
+
+The simulation steps should not be pre-calculated; each step should be calculated dynamically at the moment I trigger it. However, I should also have the option to advance the simulation one step at a time.
+
+Ignitions should be manually selected by me, and I should be able to start ignition in different locations as desired.
+
+Gray areas cannot burn again. Similarly, areas that are non-flammable or have a flammability level of 0 cannot be ignited.
+
+When I select a cell, all of its properties should be displayed in a window.
+
