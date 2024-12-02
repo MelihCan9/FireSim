@@ -30,8 +30,13 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.simulation, "Simulation")
 
     def on_tab_changed(self, index):
-        # Update the view of the newly selected tab
         if index == 0:  # Map Generation
-            self.map_editor.update_grid_view()
+            self.map_editor.grid_view.scene.clear()
+            self.map_editor.grid_view.scene.cell_items = {}
+            self.map_editor.grid_view.scene.setup_grid()
+            self.map_editor.grid_view.center_view()  # Make sure this is called
         else:  # Simulation
-            self.simulation.update_grid_view()
+            self.simulation.grid_view.scene.clear()
+            self.simulation.grid_view.scene.cell_items = {}
+            self.simulation.grid_view.scene.setup_grid()
+            self.simulation.grid_view.center_view()  # Make sure this is called

@@ -3,12 +3,13 @@ import os
 from src.cell import Cell
 from src.weather import Weather
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                           QFrame, QPushButton, QButtonGroup, QFileDialog)
+                           QFrame, QPushButton, QButtonGroup, QFileDialog, QDialog)
 from PyQt5.QtCore import Qt
 from src.ui.grid_view import GridView
 from src.ui.cell_info import CellInfoWidget
 from src.land_types import Unknown, Forest, Water, Grassland, Urban, Highway, Recreational
 from PyQt5.QtCore import pyqtSignal
+from src.ui.grid_settings import GridSettingsDialog
 
 
 class LandTypePalette(QFrame):
@@ -18,7 +19,8 @@ class LandTypePalette(QFrame):
         self.setup_ui()
         self.selected_land_type = None
         self.is_ignition_mode = False
-        self.current_button = None  # Track the currently selected button
+        self.is_extinguish_mode = False
+        self.current_button = None
 
     def setup_ui(self):
         layout = QVBoxLayout()
@@ -57,18 +59,35 @@ class LandTypePalette(QFrame):
         line.setFrameShape(QFrame.HLine)
         layout.addWidget(line)
         
-        # Ignition Tool Section
-        ignition_label = QLabel("Tools")
-        ignition_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(ignition_label)
+        # Tool Section
+        tools_label = QLabel("Tools")
+        tools_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(tools_label)
         
         self.ignite_btn = QPushButton("Ignition Tool")
         self.ignite_btn.setCheckable(True)
         self.ignite_btn.clicked.connect(self.on_ignition_selected)
         layout.addWidget(self.ignite_btn)
+
+        self.extinguish_btn = QPushButton("Extinguish Tool")
+        self.extinguish_btn.setCheckable(True)
+        self.extinguish_btn.clicked.connect(self.on_extinguish_selected)
+        layout.addWidget(self.extinguish_btn)
         
         layout.addStretch()
         self.setLayout(layout)
+
+    def on_extinguish_selected(self, checked):
+        if checked:
+            self.selected_land_type = None
+            self.is_ignition_mode = False
+            self.is_extinguish_mode = True
+            self.ignite_btn.setChecked(False)
+            if self.current_button:
+                self.current_button.setChecked(False)
+                self.current_button = None
+        else:
+            self.is_extinguish_mode = False
 
     def on_land_type_selected(self, clicked_button):
         # If there's a current button and it's different from the clicked one,
@@ -115,8 +134,10 @@ class MapEditorWidget(QWidget):
         file_ops = QHBoxLayout()
         self.save_button = QPushButton("Save Map")
         self.load_button = QPushButton("Load Map")
+        self.settings_button = QPushButton("Grid Settings")
         file_ops.addWidget(self.save_button)
         file_ops.addWidget(self.load_button)
+        file_ops.addWidget(self.settings_button)
         
         # Add file operations to left panel
         left_panel.addLayout(file_ops)
@@ -139,8 +160,19 @@ class MapEditorWidget(QWidget):
     def setup_connections(self):
         self.grid_view.scene.cell_clicked.connect(self.on_cell_clicked)
         self.grid_view.scene.area_selected.connect(self.on_area_selected)
+        self.settings_button.clicked.connect(self.show_grid_settings)
         self.save_button.clicked.connect(self.save_map)
         self.load_button.clicked.connect(self.load_map)
+
+    def show_grid_settings(self):
+        dialog = GridSettingsDialog(self.grid, self)
+        if dialog.exec_() == QDialog.Accepted:
+            # Force a complete refresh of the grid view
+            self.grid_view.scene.clear()
+            self.grid_view.scene.cell_items = {}
+            self.grid_view.scene.setup_grid()
+            self.update_grid_view()
+            self.grid_updated.emit()
 
     def save_map(self):
         """Save the current map to a JSON file"""
@@ -265,20 +297,28 @@ class MapEditorWidget(QWidget):
         # Calculate real-world coordinates
         lat, lon = self.grid.get_real_coordinates(i, j)
         
-        # Handle cell modification based on selected tool
         if self.land_palette.selected_land_type:
             # Change land type
             cell.land_type = self.land_palette.selected_land_type
-            cell.calculate_flammability()  # Recalculate flammability
+            cell.calculate_flammability()
             self.grid_view.scene.update_cell(i, j, cell)
-            self.grid_updated.emit()  # Emit signal when grid changes
+            self.grid_updated.emit()
             
         elif self.land_palette.is_ignition_mode:
             # Try to ignite cell
             if cell.land_type.get_flammability() > 0 and cell.state == "flammable":
                 cell.ignite()
                 self.grid_view.scene.update_cell(i, j, cell)
-                self.grid_updated.emit()  # Emit signal when grid changes
+                self.grid_updated.emit()
+                
+        elif self.land_palette.is_extinguish_mode:
+            # Try to extinguish cell
+            if cell.state in ["igniting", "burning"]:
+                cell.state = "flammable"
+                cell.burn_time = 5  # Reset burn time
+                cell.delay_time = 2  # Reset delay time
+                self.grid_view.scene.update_cell(i, j, cell)
+                self.grid_updated.emit()
         
         # Update cell info display
         self.cell_info.update_info(cell, lat, lon)
@@ -287,17 +327,21 @@ class MapEditorWidget(QWidget):
         for i, j in selected_cells:
             cell = self.grid.cells[i][j]
             if self.land_palette.selected_land_type:
-                # Change land type
                 cell.land_type = self.land_palette.selected_land_type
                 cell.calculate_flammability()
                 self.grid_view.scene.update_cell(i, j, cell)
             elif self.land_palette.is_ignition_mode:
-                # Try to ignite cell
                 if cell.land_type.get_flammability() > 0 and cell.state == "flammable":
                     cell.ignite()
                     self.grid_view.scene.update_cell(i, j, cell)
+            elif self.land_palette.is_extinguish_mode:
+                if cell.state in ["igniting", "burning"]:
+                    cell.state = "flammable"
+                    cell.burn_time = 5
+                    cell.delay_time = 2
+                    self.grid_view.scene.update_cell(i, j, cell)
         
-        self.grid_updated.emit()  # Emit signal when grid changes
+        self.grid_updated.emit()
 
     def update_grid_view(self):
         """Update the visual representation of the grid"""

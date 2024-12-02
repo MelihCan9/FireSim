@@ -9,9 +9,9 @@ class SimulationHistory:
 
     def add_state(self, grid):
         """Record a new grid state"""
-        # Create a deep copy of the current grid state
-        state = [[(cell.land_type, cell.state) for cell in row] 
-                for row in grid.cells]
+        # Create a deep copy of the current grid state including timers
+        state = [[(cell.land_type, cell.state, cell.burn_time, cell.delay_time) 
+                for cell in row] for row in grid.cells]
         
         # If we're not at the end of history, truncate future states
         if self.current_index < len(self.states) - 1:
@@ -25,11 +25,12 @@ class SimulationHistory:
         if 0 <= index < len(self.states):
             state = self.states[index]
             for i, row in enumerate(state):
-                for j, (land_type, cell_state) in enumerate(row):
+                for j, (land_type, cell_state, burn_time, delay_time) in enumerate(row):
                     grid.cells[i][j].land_type = land_type
                     grid.cells[i][j].state = cell_state
+                    grid.cells[i][j].burn_time = burn_time
+                    grid.cells[i][j].delay_time = delay_time
             self.current_index = index
-
     def can_go_back(self):
         return self.current_index > 0
 

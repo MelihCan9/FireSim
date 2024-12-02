@@ -95,6 +95,11 @@ class SimulationWidget(QWidget):
         self.is_running = True
         self.play_pause_button.setText("Pause")
         self.step_button.setEnabled(False)
+        
+        # Clear future history states if we're starting from a rewound position
+        if self.history.current_index < len(self.history.states) - 1:
+            self.history.states = self.history.states[:self.history.current_index + 1]
+        
         self.timer.start(self.simulation_speed)
 
     def pause_simulation(self):
