@@ -119,6 +119,21 @@ class GridScene(QGraphicsScene):
         self.selected_cell = (i, j)
         self.cell_items[(i, j)].setPen(QPen(Qt.blue, 2))
 
+    # def setup_grid(self):
+    #     for i, row in enumerate(self.grid.cells):
+    #         for j, cell in enumerate(row):
+    #             rect = QGraphicsRectItem(
+    #                 j * self.cell_size,
+    #                 i * self.cell_size,
+    #                 self.cell_size,
+    #                 self.cell_size
+    #             )
+    #             color = QColor(cell.land_type.get_color())
+    #             rect.setBrush(QBrush(color))
+    #             rect.setPen(QPen(Qt.black, 1))
+    #             self.addItem(rect)
+    #             self.cell_items[(i, j)] = rect
+
     def setup_grid(self):
         for i, row in enumerate(self.grid.cells):
             for j, cell in enumerate(row):
@@ -128,7 +143,15 @@ class GridScene(QGraphicsScene):
                     self.cell_size,
                     self.cell_size
                 )
+                # Use the same color logic as update_cell
                 color = QColor(cell.land_type.get_color())
+                if cell.state == "igniting":
+                    color = QColor("orange")
+                elif cell.state == "burning":
+                    color = QColor("red")
+                elif cell.state == "burnt":
+                    color = QColor("gray")
+                
                 rect.setBrush(QBrush(color))
                 rect.setPen(QPen(Qt.black, 1))
                 self.addItem(rect)
