@@ -16,6 +16,7 @@ class Grid:
         self.max_lon = max_lon
         self.resolution = resolution
         self.cells = []
+        self.resources = {}  # Dictionary to store resources: {(i,j): resource}
 
     def generate_grid(self):
         """
@@ -71,24 +72,74 @@ class Grid:
                 neighbors.append(self.cells[ni][nj])
         return neighbors
 
+    def add_resource(self, resource, position):
+        """Add a firefighting resource to the grid"""
+        if hasattr(resource, 'resource_type'):  # Only add if it's a firefighting resource
+            self.resources[position] = resource
+        
+    def remove_resource(self, position):
+        """Remove a firefighting resource from the grid"""
+        if position in self.resources:
+            del self.resources[position]
+
+    def get_active_resources(self, cell_position):
+        """Get all resources that can reach a given cell"""
+        active_resources = []
+        for pos, resource in self.resources.items():
+            if resource.can_reach(cell_position):
+                active_resources.append(resource)
+        return active_resources
+
     def spread_fire(self):
-        """
-        Spreads fire from burning cells to flammable neighbors.
-        """
+        """Modified spread_fire to consider firefighting resources"""
         burning_cells = []
 
         for row in self.cells:
             for cell in row:
                 if cell.state == "igniting":
-                    cell.burn()
+                    # Check if any resources can prevent ignition
+                    active_resources = self.get_active_resources(cell.index)
+                    water_resources = [r for r in active_resources if r.stats.water_capacity is not None and r.remaining_water > 0]
+                    total_water_effectiveness = sum(r.stats.effectiveness for r in water_resources)
+                    other_resources = [r for r in active_resources if r.stats.water_capacity is None]
+                    total_other_effectiveness = sum(r.stats.effectiveness for r in other_resources)
+                    
+                    total_effectiveness = total_water_effectiveness + total_other_effectiveness
+                    
+                    if total_effectiveness >= 0.6:  # Lower threshold for preventing ignition
+                        cell.state = "flammable"
+                        # Reduce water in water-based resources that were used
+                        for resource in water_resources:
+                            resource.remaining_water = max(0, resource.remaining_water - 50)
+                        print(f"Cell {cell.index} ignition prevented by firefighting resources")
+                    else:
+                        cell.burn()
 
-                if cell.state == "burning":
-                    neighbors = self.get_neighbors(cell)
-                    for neighbor in neighbors:
-                        neighbor.calculate_flammability()
-                        if neighbor.state == "flammable" and neighbor.flammability > 0.3:
-                            neighbor.ignite()
-                    burning_cells.append(cell)
+                elif cell.state == "burning":
+                    # Check if resources can extinguish the fire
+                    active_resources = self.get_active_resources(cell.index)
+                    water_resources = [r for r in active_resources if r.stats.water_capacity is not None and r.remaining_water > 0]
+                    total_water_effectiveness = sum(r.stats.effectiveness for r in water_resources)
+                    other_resources = [r for r in active_resources if r.stats.water_capacity is None]
+                    total_other_effectiveness = sum(r.stats.effectiveness for r in other_resources)
+                    
+                    total_effectiveness = total_water_effectiveness + total_other_effectiveness
+                    
+                    if total_effectiveness >= 0.7:  # Threshold for extinguishing
+                        cell.state = "flammable"
+                        cell.burn_time = 5
+                        print(f"Cell {cell.index} fire extinguished by firefighting resources")
+                        for resource in water_resources:
+                            resource.remaining_water = max(0, resource.remaining_water - 75)
+                    else:
+                        # If can't extinguish, try to prevent spread
+                        neighbors = self.get_neighbors(cell)
+                        for neighbor in neighbors:
+                            neighbor.calculate_flammability()
+                            threshold = 0.4 * (1 - min(total_effectiveness, 0.8))
+                            if neighbor.state == "flammable" and neighbor.flammability > threshold:
+                                neighbor.ignite()
+                        burning_cells.append(cell)
 
         for cell in burning_cells:
             cell.burn_out()
@@ -100,6 +151,7 @@ class Grid:
 
         def update(frame):
             ax.clear()
+            # Draw cells
             for row in self.cells:
                 for cell in row:
                     coords = cell.get_coords(self.min_lon, self.min_lat, self.resolution)
@@ -112,9 +164,32 @@ class Grid:
                         cell.land_type.get_color()
                     )
                     ax.fill(x, y, color=color, edgecolor="black", linewidth=0.5)
+            
+            # Draw resources
+            for pos, resource in self.resources.items():
+                i, j = pos
+                lat, lon = self.get_real_coordinates(i, j)
+                
+                # Different markers for different resource types
+                marker = {
+                    'fire_station': '^',
+                    'helicopter': 'H',
+                    'uav': 'D',
+                    'water_tanker': 's',
+                    'work_machine': 'P'
+                }.get(resource.resource_type.value, 'o')
+                
+                ax.plot(lon, lat, marker=marker, markersize=10, 
+                       color='blue', markeredgecolor='black')
+                
+                # Draw coverage radius
+                circle = plt.Circle((lon, lat), 
+                                  resource.stats.coverage_radius * self.resolution,
+                                  color='blue', alpha=0.1)
+                ax.add_artist(circle)
 
             self.spread_fire()
-
+            
             ax.set_xlim(self.min_lon, self.max_lon)
             ax.set_ylim(self.min_lat, self.max_lat)
             ax.set_aspect('equal')

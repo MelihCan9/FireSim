@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QGraphicsScene, QGraphicsView, QGraphicsRectItem
+from PyQt5.QtWidgets import QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsEllipseItem
 from PyQt5.QtCore import Qt, QRectF, pyqtSignal, QPointF
 from PyQt5.QtGui import QColor, QPen, QBrush, QPainter
 
@@ -14,6 +14,7 @@ class GridScene(QGraphicsScene):
         self.selected_cell = None
         self.selection_rect = None
         self.selection_start = None
+        self.resource_items = {}
         self.setup_grid()
 
     def mousePressEvent(self, event):
@@ -167,6 +168,54 @@ class GridScene(QGraphicsScene):
             elif cell.state == "burnt":
                 color = QColor("gray")
             self.cell_items[(i, j)].setBrush(QBrush(color))
+
+    def update_resources(self):
+        # Clear existing resource visualizations
+        for items in list(self.resource_items.values()):  # Create a copy of values
+            for item in items:
+                if item in self.items():  # Check if item still exists in scene
+                    self.removeItem(item)
+        self.resource_items = {}
+        
+        # Add new resource visualizations
+        for pos, resource in self.grid.resources.items():
+            i, j = pos
+            
+            # Create resource symbol
+            symbol = QGraphicsEllipseItem(
+                j * self.cell_size + self.cell_size/4,
+                i * self.cell_size + self.cell_size/4,
+                self.cell_size/2,
+                self.cell_size/2
+            )
+            
+            # Set color based on resource type
+            color_map = {
+                'fire_station': QColor(0, 0, 255),  # Blue
+                'helicopter': QColor(0, 255, 255),  # Cyan
+                'uav': QColor(255, 165, 0),        # Orange
+                'water_tanker': QColor(0, 255, 0), # Green
+                'work_machine': QColor(255, 0, 255) # Magenta
+            }
+            
+            color = color_map.get(resource.resource_type.value, QColor(128, 128, 128))
+            symbol.setBrush(QBrush(color))
+            symbol.setPen(QPen(Qt.black, 1))
+            
+            # Add coverage radius indicator
+            radius = resource.stats.coverage_radius * self.cell_size
+            coverage = QGraphicsEllipseItem(
+                j * self.cell_size - radius + self.cell_size/2,
+                i * self.cell_size - radius + self.cell_size/2,
+                radius * 2,
+                radius * 2
+            )
+            coverage.setBrush(QBrush(QColor(0, 0, 255, 30)))
+            coverage.setPen(QPen(Qt.transparent))
+            
+            self.addItem(coverage)
+            self.addItem(symbol)
+            self.resource_items[pos] = [coverage, symbol]
 
 class GridView(QGraphicsView):
     def __init__(self, grid):

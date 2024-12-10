@@ -10,7 +10,18 @@ from src.ui.cell_info import CellInfoWidget
 from src.land_types import Unknown, Forest, Water, Grassland, Urban, Highway, Recreational
 from PyQt5.QtCore import pyqtSignal
 from src.ui.grid_settings import GridSettingsDialog
+from src.ui.resource_palette import ResourcePalette
+from src.firefighting.resources import ResourceType, FireStation, Helicopter, UAV, WaterTanker, WorkMachine
 
+land_types = {
+    "Unknown": Unknown,
+    "Forest": Forest,
+    "Water": Water,
+    "Grassland": Grassland,
+    "Urban": Urban,
+    "Highway": Highway,
+    "Recreational": Recreational
+}
 
 class LandTypePalette(QFrame):
     def __init__(self):
@@ -146,6 +157,10 @@ class MapEditorWidget(QWidget):
         self.land_palette = LandTypePalette()
         left_panel.addWidget(self.land_palette)
         
+        # Add resource palette
+        self.resource_palette = ResourcePalette()
+        left_panel.addWidget(self.resource_palette)
+        
         # Grid view and cell info (existing code)
         self.grid_view = GridView(self.grid)
         self.cell_info = CellInfoWidget()
@@ -189,7 +204,8 @@ class MapEditorWidget(QWidget):
                     'rows': len(self.grid.cells),
                     'cols': len(self.grid.cells[0])
                 },
-                'cells': []
+                'cells': [],
+                'resources': []  # Add resources array
             }
             
             for i, row in enumerate(self.grid.cells):
@@ -217,6 +233,21 @@ class MapEditorWidget(QWidget):
                     }
                     map_data['cells'].append(cell_data)
             
+            # Save resources
+            for pos, resource in self.grid.resources.items():
+                resource_data = {
+                    'position': {'row': pos[0], 'col': pos[1]},
+                    'type': resource.resource_type.value,
+                    'stats': {
+                        'coverage_radius': resource.stats.coverage_radius,
+                        'effectiveness': resource.stats.effectiveness,
+                        'response_time': resource.stats.response_time,
+                        'water_capacity': resource.stats.water_capacity,
+                        'movement_speed': resource.stats.movement_speed
+                    }
+                }
+                map_data['resources'].append(resource_data)
+            
             try:
                 with open(file_name, 'w') as f:
                     json.dump(map_data, f, indent=2)
@@ -238,18 +269,11 @@ class MapEditorWidget(QWidget):
                 with open(file_name, 'r') as f:
                     map_data = json.load(f)
                 
-                # Create a mapping of land type names to classes
-                land_types = {
-                    'Unknown': Unknown,
-                    'Forest': Forest,
-                    'Water': Water,
-                    'Grassland': Grassland,
-                    'Urban': Urban,
-                    'Highway': Highway,
-                    'Recreational': Recreational
-                }
+                # Clear existing resources
+                self.grid.resources.clear()
+                self.grid_view.scene.update_resources()
                 
-                # Update grid with loaded data
+                # Load cells (existing code)
                 for cell_data in map_data['cells']:
                     i = cell_data['position']['row']
                     j = cell_data['position']['col']
@@ -287,6 +311,22 @@ class MapEditorWidget(QWidget):
                     self.grid.cells[i][j] = new_cell
                     self.grid_view.scene.update_cell(i, j, new_cell)
                 
+                # Load resources
+                resource_types = {
+                    "fire_station": FireStation,
+                    "helicopter": Helicopter,
+                    "uav": UAV,
+                    "water_tanker": WaterTanker,
+                    "work_machine": WorkMachine
+                }
+                
+                for resource_data in map_data.get('resources', []):
+                    pos = (resource_data['position']['row'], resource_data['position']['col'])
+                    resource_class = resource_types[resource_data['type']]
+                    resource = resource_class(position=pos)
+                    self.grid.add_resource(pos, resource)
+                
+                self.grid_view.scene.update_resources()
                 self.grid_updated.emit()
                 print(f"Map loaded successfully from {file_name}")
             except Exception as e:
@@ -322,6 +362,19 @@ class MapEditorWidget(QWidget):
         
         # Update cell info display
         self.cell_info.update_info(cell, lat, lon)
+        
+        if self.resource_palette.selected_resource_type:
+            # Create resource with position
+            resource = self.resource_palette.resource_class(position=(i, j))
+            # Fix parameter order: pass (resource, position) instead of (position, resource)
+            self.grid.add_resource(resource, (i, j))
+            self.grid_view.scene.update_resources()
+            self.grid_updated.emit()
+        elif self.resource_palette.is_remove_mode:
+            if (i, j) in self.grid.resources:
+                self.grid.remove_resource((i, j))
+                self.grid_view.scene.update_resources()
+                self.grid_updated.emit()
 
     def on_area_selected(self, selected_cells):
         for i, j in selected_cells:
