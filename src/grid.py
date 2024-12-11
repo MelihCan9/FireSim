@@ -4,6 +4,7 @@ import numpy as np
 from src.cell import Cell
 from src.weather import Weather
 from src.land_types import Unknown
+from src.firefighting.routing import RouteStatus
 
 class Grid:
     """
@@ -199,3 +200,37 @@ class Grid:
 
         ani = animation.FuncAnimation(fig, update, frames=50, repeat=False)
         plt.show()
+
+    def update_resources(self):
+        """Update all resources positions and states"""
+        resources_to_update = {}  # Store position updates
+        
+        for pos, resource in list(self.resources.items()):
+            if resource.route and resource.route.status == RouteStatus.IN_PROGRESS:
+                old_pos = pos
+                action_needed = resource.update_position()
+                new_pos = resource.position
+                
+                # If position changed, update the resource's location in the grid
+                if old_pos != new_pos:
+                    resources_to_update[old_pos] = (new_pos, resource)
+                
+                if action_needed:
+                    # Handle resource actions (extinguish, survey, refill)
+                    current_waypoint = resource.route.current_waypoint()
+                    if current_waypoint.action == "extinguish":
+                        cells = self.get_cells_in_radius(current_waypoint.position, 
+                                                    resource.stats.coverage_radius)
+                        for cell in cells:
+                            if cell.state in ["igniting", "burning"]:
+                                cell.state = "flammable"
+                                resource.remaining_water -= 50
+                    elif current_waypoint.action == "refill":
+                        resource.remaining_water = resource.stats.water_capacity
+                    
+                    resource.route.advance()
+        
+        # Update resource positions in the grid
+        for old_pos, (new_pos, resource) in resources_to_update.items():
+            del self.resources[old_pos]
+            self.resources[new_pos] = resource

@@ -1,10 +1,12 @@
-from PyQt5.QtWidgets import QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsEllipseItem
+from PyQt5.QtWidgets import QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem
 from PyQt5.QtCore import Qt, QRectF, pyqtSignal, QPointF
-from PyQt5.QtGui import QColor, QPen, QBrush, QPainter
+from PyQt5.QtGui import QColor, QPen, QBrush, QPainter, QPainterPath
+from src.firefighting.routing import RouteStatus
 
 class GridScene(QGraphicsScene):
     cell_clicked = pyqtSignal(int, int)  # Signal for cell selection
     area_selected = pyqtSignal(list)  # Signal for area selection
+    cell_right_clicked = pyqtSignal(int, int)  # Signal for route creation
 
     def __init__(self, grid):
         super().__init__()
@@ -33,8 +35,10 @@ class GridScene(QGraphicsScene):
                 self.select_cell(i, j)
                 self.cell_clicked.emit(i, j)
         elif event.button() == Qt.RightButton:
-            # For area selection, store starting point
-            self.selection_start = (i, j)
+            # Handle right click for route creation
+            if 0 <= i < rows and 0 <= j < cols:
+                self.cell_right_clicked.emit(i, j)
+                event.accept()  # Accept the event to prevent it from being used for dragging
 
     def mouseMoveEvent(self, event):
         if self.selection_start and event.buttons() == Qt.LeftButton:
@@ -171,15 +175,60 @@ class GridScene(QGraphicsScene):
 
     def update_resources(self):
         # Clear existing resource visualizations
-        for items in list(self.resource_items.values()):  # Create a copy of values
+        for items in list(self.resource_items.values()):
             for item in items:
-                if item in self.items():  # Check if item still exists in scene
+                if item in self.items():
                     self.removeItem(item)
         self.resource_items = {}
         
         # Add new resource visualizations
         for pos, resource in self.grid.resources.items():
             i, j = pos
+            items = []  # List to store all items for this resource
+            
+            # Create route visualization if resource has an active route
+            if resource.route and resource.route.status == RouteStatus.IN_PROGRESS:
+                path = QPainterPath()
+                start_i, start_j = pos
+                path.moveTo(
+                    start_j * self.cell_size + self.cell_size/2,
+                    start_i * self.cell_size + self.cell_size/2
+                )
+                
+                # Draw lines through all waypoints
+                for waypoint in resource.route.waypoints[resource.route.current_index:]:
+                    wp_i, wp_j = waypoint.position
+                    path.lineTo(
+                        wp_j * self.cell_size + self.cell_size/2,
+                        wp_i * self.cell_size + self.cell_size/2
+                    )
+                    
+                    # Add action indicator if waypoint has an action
+                    if waypoint.action:
+                        action_indicator = QGraphicsEllipseItem(
+                            wp_j * self.cell_size + self.cell_size/3,
+                            wp_i * self.cell_size + self.cell_size/3,
+                            self.cell_size/3,
+                            self.cell_size/3
+                        )
+                        
+                        # Set color based on action type
+                        action_colors = {
+                            "extinguish": QColor(0, 0, 255),  # Blue
+                            "survey": QColor(255, 255, 0),    # Yellow
+                            "refill": QColor(0, 255, 255)     # Cyan
+                        }
+                        color = action_colors.get(waypoint.action, QColor(128, 128, 128))
+                        action_indicator.setBrush(QBrush(color))
+                        action_indicator.setPen(QPen(Qt.black, 1))
+                        items.append(action_indicator)
+                        self.addItem(action_indicator)
+                
+                # Create and add route path
+                route_path = QGraphicsPathItem(path)
+                route_path.setPen(QPen(QColor(128, 128, 128), 2, Qt.DashLine))
+                items.append(route_path)
+                self.addItem(route_path)
             
             # Create resource symbol
             symbol = QGraphicsEllipseItem(
@@ -189,13 +238,12 @@ class GridScene(QGraphicsScene):
                 self.cell_size/2
             )
             
-            # Set color based on resource type
             color_map = {
-                'fire_station': QColor(0, 0, 255),  # Blue
-                'helicopter': QColor(0, 255, 255),  # Cyan
-                'uav': QColor(255, 165, 0),        # Orange
-                'water_tanker': QColor(0, 255, 0), # Green
-                'work_machine': QColor(255, 0, 255) # Magenta
+                'fire_station': QColor(0, 0, 255),
+                'helicopter': QColor(0, 255, 255),
+                'uav': QColor(255, 165, 0),
+                'water_tanker': QColor(0, 255, 0),
+                'work_machine': QColor(255, 0, 255)
             }
             
             color = color_map.get(resource.resource_type.value, QColor(128, 128, 128))
@@ -213,9 +261,10 @@ class GridScene(QGraphicsScene):
             coverage.setBrush(QBrush(QColor(0, 0, 255, 30)))
             coverage.setPen(QPen(Qt.transparent))
             
+            items.extend([coverage, symbol])
             self.addItem(coverage)
             self.addItem(symbol)
-            self.resource_items[pos] = [coverage, symbol]
+            self.resource_items[pos] = items
 
 class GridView(QGraphicsView):
     def __init__(self, grid):
@@ -243,17 +292,28 @@ class GridView(QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
-            self.setDragMode(QGraphicsView.NoDrag)
+            # Convert mouse coordinates to scene coordinates
+            scene_pos = self.mapToScene(event.pos())
+            i = int(scene_pos.y() // self.scene.cell_size)
+            j = int(scene_pos.x() // self.scene.cell_size)
+            
+            # Get grid dimensions
+            rows = len(self.scene.grid.cells)
+            cols = len(self.scene.grid.cells[0])
+            
+            # Only emit if within grid boundaries
+            if 0 <= i < rows and 0 <= j < cols:
+                self.scene.cell_right_clicked.emit(i, j)
+        elif event.button() == Qt.MiddleButton:
             self.is_dragging = True
             self.last_mouse_pos = event.pos()
-            self.setCursor(Qt.ClosedHandCursor)
         else:
             super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MiddleButton:  # Change to middle mouse button for dragging
             self.is_dragging = False
-            self.setCursor(Qt.ArrowCursor)
+            self.last_mouse_pos = None
         else:
             super().mouseReleaseEvent(event)
 

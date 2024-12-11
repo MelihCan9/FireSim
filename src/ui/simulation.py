@@ -155,7 +155,9 @@ class SimulationWidget(QWidget):
         self.timeline_slider.setEnabled(True)
         
         # Run simulation step
+        self.grid.update_resources()
         self.grid.spread_fire()
+        self.grid_view.scene.update_resources()
         self.update_grid_view()
         self.grid_updated.emit()
         
@@ -199,3 +201,5 @@ class SimulationWidget(QWidget):
     def update_timeline_controls(self):
         self.back_button.setEnabled(self.history.can_go_back())
         self.forward_button.setEnabled(self.history.can_go_forward())
+
+

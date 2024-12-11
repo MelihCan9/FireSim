@@ -12,6 +12,7 @@ from PyQt5.QtCore import pyqtSignal
 from src.ui.grid_settings import GridSettingsDialog
 from src.ui.resource_palette import ResourcePalette
 from src.firefighting.resources import ResourceType, FireStation, Helicopter, UAV, WaterTanker, WorkMachine
+from src.firefighting.routing import RoutePoint
 
 land_types = {
     "Unknown": Unknown,
@@ -32,6 +33,9 @@ class LandTypePalette(QFrame):
         self.is_ignition_mode = False
         self.is_extinguish_mode = False
         self.current_button = None
+        self.is_route_mode = False
+        self.selected_resource = None
+        self.route_points = []
 
     def setup_ui(self):
         layout = QVBoxLayout()
@@ -134,6 +138,9 @@ class MapEditorWidget(QWidget):
         self.grid = grid
         self.setup_ui()
         self.setup_connections()
+        self.is_route_mode = False
+        self.selected_resource = None
+        self.route_points = []
 
     def setup_ui(self):
         layout = QHBoxLayout()
@@ -178,6 +185,7 @@ class MapEditorWidget(QWidget):
         self.settings_button.clicked.connect(self.show_grid_settings)
         self.save_button.clicked.connect(self.save_map)
         self.load_button.clicked.connect(self.load_map)
+        self.grid_view.scene.cell_right_clicked.connect(self.on_cell_right_clicked)
 
     def show_grid_settings(self):
         dialog = GridSettingsDialog(self.grid, self)
@@ -331,14 +339,39 @@ class MapEditorWidget(QWidget):
                 print(f"Map loaded successfully from {file_name}")
             except Exception as e:
                 print(f"Error loading map: {e}")
-    def on_cell_clicked(self, i, j):
-        cell = self.grid.cells[i][j]
+    def on_cell_clicked(self, i, j, event=None):
+        if event and event.modifiers() & Qt.ControlModifier:
+            pos = (i, j)
+            # If clicking on a resource, select it for routing
+            if pos in self.grid.resources:
+                resource = self.grid.resources[pos]
+                if resource.stats.movement_speed:  # Only mobile resources can have routes
+                    self.selected_resource = resource
+                    self.route_points = []
+                    print(f"Selected {resource.resource_type.value} for routing")
+            # If resource selected, add waypoint
+            elif self.selected_resource:
+                waypoint = RoutePoint(position=(i, j))
+                self.route_points.append(waypoint)
+                self.selected_resource.set_route(self.route_points)
+                self.grid_view.scene.update_resources()
+                print(f"Added waypoint at {i}, {j}")
+            return
         
+        cell = self.grid.cells[i][j]
+        pos = (i, j)
+        
+        # Handle resource removal first
+        if self.resource_palette.is_remove_mode and pos in self.grid.resources:
+            self.grid.remove_resource(pos)
+            self.grid_view.scene.update_resources()
+            self.grid_updated.emit()
+            return
         # Calculate real-world coordinates
         lat, lon = self.grid.get_real_coordinates(i, j)
         
         if self.land_palette.selected_land_type:
-            # Change land type
+            # Change land type - use the instance directly
             cell.land_type = self.land_palette.selected_land_type
             cell.calculate_flammability()
             self.grid_view.scene.update_cell(i, j, cell)
@@ -355,32 +388,26 @@ class MapEditorWidget(QWidget):
             # Try to extinguish cell
             if cell.state in ["igniting", "burning"]:
                 cell.state = "flammable"
-                cell.burn_time = 5  # Reset burn time
-                cell.delay_time = 2  # Reset delay time
+                cell.burn_time = 5
+                cell.delay_time = 2
                 self.grid_view.scene.update_cell(i, j, cell)
                 self.grid_updated.emit()
         
         # Update cell info display
         self.cell_info.update_info(cell, lat, lon)
         
-        if self.resource_palette.selected_resource_type:
+        if self.resource_palette.resource_class:
             # Create resource with position
             resource = self.resource_palette.resource_class(position=(i, j))
-            # Fix parameter order: pass (resource, position) instead of (position, resource)
             self.grid.add_resource(resource, (i, j))
             self.grid_view.scene.update_resources()
             self.grid_updated.emit()
-        elif self.resource_palette.is_remove_mode:
-            if (i, j) in self.grid.resources:
-                self.grid.remove_resource((i, j))
-                self.grid_view.scene.update_resources()
-                self.grid_updated.emit()
 
     def on_area_selected(self, selected_cells):
         for i, j in selected_cells:
             cell = self.grid.cells[i][j]
             if self.land_palette.selected_land_type:
-                cell.land_type = self.land_palette.selected_land_type
+                cell.land_type = self.land_palette.selected_land_type  # Removed ()
                 cell.calculate_flammability()
                 self.grid_view.scene.update_cell(i, j, cell)
             elif self.land_palette.is_ignition_mode:
@@ -401,3 +428,22 @@ class MapEditorWidget(QWidget):
         for i, row in enumerate(self.grid.cells):
             for j, cell in enumerate(row):
                 self.grid_view.scene.update_cell(i, j, cell)
+
+    def on_cell_right_clicked(self, i, j):
+        pos = (i, j)
+        # If clicking on a resource, select it for routing
+        if pos in self.grid.resources:
+            resource = self.grid.resources[pos]
+            if hasattr(resource.stats, 'movement_speed') and resource.stats.movement_speed > 0:  # Check if mobile
+                self.selected_resource = resource
+                self.route_points = []
+                print(f"Selected {resource.resource_type.value} for routing")
+                return
+            
+        # If resource is selected, add waypoint
+        if self.selected_resource and hasattr(self.selected_resource.stats, 'movement_speed') and self.selected_resource.stats.movement_speed > 0:
+            waypoint = RoutePoint(position=(i, j))
+            self.route_points.append(waypoint)
+            self.selected_resource.set_route(self.route_points)
+            self.grid_view.scene.update_resources()
+            print(f"Added waypoint at {i}, {j}")
